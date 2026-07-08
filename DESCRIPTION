@@ -41,3 +41,4 @@ Remotes:
     github::UrbanInstitute/urbnmapr
 URL: https://github.com/ftsiboe/gwkit
 BugReports: https://github.com/ftsiboe/gwkit/issues
+Config/testthat/edition: 3
