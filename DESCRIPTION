@@ -1,0 +1,43 @@
+Package: gwkit
+Type: Package
+Title: Convenience Wrappers and Workflows for Geographically Weighted Analysis
+Version: 0.0.0.9000
+Author: Francis Tsiboe [aut, cre] (<https://orcid.org/0000-0001-5984-1072>),
+    TERRA ANALYTICS LLC [cph, fnd]
+Maintainer: Francis Tsiboe <ftsiboe@hotmail.com>
+Contributor: -
+Reviewer: -
+Creator: Francis Tsiboe
+Copyright: TERRA ANALYTICS LLC (Kansas, USA)
+Description: A toolkit of convenience wrappers and reproducible workflows around
+    'GWmodel' and related spatial packages ('sf', 'terra', 'sp') for
+    geographically weighted analysis. Provides point-, polygon-, and county-level
+    geographically weighted summary-statistics pipelines, distance-metric presets,
+    and utilities to reduce results estimated across a grid of kernel and
+    distance-metric settings to a single per-unit consensus, with optional
+    Queen-contiguity reconciliation. The package wraps, and does not replace, the
+    underlying estimators.
+License: GPL-3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Depends: R (>= 4.1.0)
+Imports:
+    data.table,
+    GWmodel,
+    sp,
+    sf,
+    terra,
+    dplyr,
+    urbnmapr,
+    methods,
+    stats,
+    utils
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+Remotes:
+    github::UrbanInstitute/urbnmapr
+URL: https://github.com/ftsiboe/gwkit
+BugReports: https://github.com/ftsiboe/gwkit/issues
