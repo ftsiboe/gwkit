@@ -80,6 +80,8 @@ supplied regression points). Distances and the fixed bandwidth use GWmodel.
 }
 \seealso{
 Other Geographically weighted regression: 
-\code{\link{estimate_gwr_by_polygon}()}
+\code{\link{estimate_gwr_by_polygon}()},
+\code{\link{estimate_gwr_coefficients_by_point}()},
+\code{\link{estimate_gwr_coefficients_by_polygon}()}
 }
 \concept{Geographically weighted regression}
