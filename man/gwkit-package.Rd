@@ -19,15 +19,14 @@ underlying estimators.
 \section{Main function families}{
 
 \describe{
-\item{Geographically weighted summary statistics}{
-\code{estimate_gwss_by_point()}, \code{estimate_gwss_by_polygon()},
-\code{estimate_gwss_by_county()}.}
-\item{Geographically weighted mean/variance regression}{
-\code{estimate_gwr_by_point()}, \code{estimate_gwr_by_polygon()}.}
+\item{Geographically weighted summary statistics}{\code{estimate_gwss()}.}
+\item{Geographically weighted spatial lag}{\code{estimate_gwlag()}.}
+\item{Geographically weighted regression (plain, fixed-effects, mean/variance)}{
+\code{estimate_gwr()}.}
 \item{Distance-metric presets}{\code{gw_distance_metric_presets()},
 \code{gw_distance_metric_names()}, \code{resolve_distance_metric()}.}
 \item{Consensus across the kernel x distance-metric domain}{
-\code{gw_optimal_class_by_point()}, \code{gw_optimal_class_by_polygon()}.}
+\code{gw_consensus_scalar()}, \code{gw_consensus_class()}.}
 }
 }
 

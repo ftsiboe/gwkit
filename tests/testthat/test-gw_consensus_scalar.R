@@ -16,7 +16,7 @@
 }
 
 test_that("by_point returns the median consensus, sign agreement, and n_settings", {
-  out <- gw_optimal_scalar_by_point(.scalar_fixture(), unit_col = "grid_id")
+  out <- gw_consensus_scalar(.scalar_fixture(), unit_col = "grid_id")
   out <- out[order(out$grid_id)]
 
   expect_s3_class(out, "data.table")
@@ -34,25 +34,25 @@ test_that("by_point returns the median consensus, sign agreement, and n_settings
 })
 
 test_that("agg_fun is honoured (mean, and a custom trimmed-mean closure)", {
-  out_mean <- gw_optimal_scalar_by_point(.scalar_fixture(), "grid_id", agg_fun = mean)
+  out_mean <- gw_consensus_scalar(.scalar_fixture(), "grid_id", agg_fun = mean)
   out_mean <- out_mean[order(out_mean$grid_id)]
   expect_equal(out_mean$consensus, c(2, -4, 4 / 3))          # per-unit means
 
-  out_trim <- gw_optimal_scalar_by_point(.scalar_fixture(), "grid_id",
+  out_trim <- gw_consensus_scalar(.scalar_fixture(), "grid_id",
                                          agg_fun = function(x) mean(x, trim = 0.5))
   out_trim <- out_trim[order(out_trim$grid_id)]
   expect_equal(out_trim$consensus, c(2, -4, 2))              # 50% trim == median
 })
 
 test_that("probs control the reported spread quantiles", {
-  out <- gw_optimal_scalar_by_point(.scalar_fixture(), "grid_id", probs = c(0, 1))
+  out <- gw_consensus_scalar(.scalar_fixture(), "grid_id", probs = c(0, 1))
   out <- out[order(out$grid_id)]
   expect_equal(out$consensus_lo, c(1, -6, -1))              # per-unit minima
   expect_equal(out$consensus_hi, c(3, -2,  3))              # per-unit maxima
 })
 
 test_that("queen_smooth adds finite neighbourhood columns", {
-  out <- gw_optimal_scalar_by_point(.scalar_fixture(), "grid_id", queen_smooth = TRUE)
+  out <- gw_consensus_scalar(.scalar_fixture(), "grid_id", queen_smooth = TRUE)
   expect_true(all(c("queen_value", "queen_order", "queen_agreement") %in% names(out)))
   expect_true(all(is.finite(out$queen_value)))
   expect_true(all(out$queen_order >= 1L))
@@ -61,7 +61,7 @@ test_that("queen_smooth adds finite neighbourhood columns", {
 test_that("non-finite values are dropped before the summary", {
   df <- .scalar_fixture()
   df$estimate[1] <- NA_real_                                # A's first setting -> NA
-  out <- gw_optimal_scalar_by_point(df, "grid_id")
+  out <- gw_consensus_scalar(df, "grid_id")
   out <- out[order(out$grid_id)]
   expect_equal(out$n_settings[out$grid_id == "A"], 2L)
   expect_equal(out$consensus[out$grid_id == "A"], 2.5)     # median of c(2, 3)
@@ -78,7 +78,7 @@ test_that("by_polygon consensus over an sf grid, with correct shape and centroid
                estimate = c(v - 0.5, v, v + 0.5), stringsAsFactors = FALSE)
   }))
 
-  out <- gw_optimal_scalar_by_polygon(df, unit_col = "pid", polygons = g,
+  out <- gw_consensus_scalar(df, unit_col = "pid", geometry =g,
                                       value_col = "estimate")
   out <- out[match(ids, out$pid)]
 
@@ -87,7 +87,7 @@ test_that("by_polygon consensus over an sf grid, with correct shape and centroid
   expect_equal(out$consensus, as.numeric(seq_along(ids) - 5))   # per-unit medians
   expect_true(all(is.finite(out$longitude) & is.finite(out$latitude)))
 
-  out_q <- gw_optimal_scalar_by_polygon(df, "pid", polygons = g,
+  out_q <- gw_consensus_scalar(df, "pid", geometry =g,
                                         value_col = "estimate", queen_smooth = TRUE)
   expect_true(all(c("queen_value", "queen_order", "queen_agreement") %in% names(out_q)))
   expect_true(all(is.finite(out_q$queen_value)))
@@ -96,7 +96,7 @@ test_that("by_polygon consensus over an sf grid, with correct shape and centroid
 test_that("by_polygon errors on a non-polygon input", {
   df <- data.frame(pid = "p1", kernel = "k1", estimate = 1)
   expect_error(
-    gw_optimal_scalar_by_polygon(df, "pid", polygons = "not-a-polygon",
+    gw_consensus_scalar(df, "pid", geometry ="not-a-polygon",
                                  value_col = "estimate")
   )
 })

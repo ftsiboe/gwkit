@@ -13,6 +13,8 @@ for (i in list.files("R", full.names = TRUE)) {
   tools::showNonASCIIfile(i)
 }
 
+source("data-raw/scripts/internal_datasets.R")
+
 # Rebuild documentation from roxygen comments
 devtools::document()
 
@@ -25,4 +27,5 @@ devtools::build_manual(path = getwd())
 # Optional: run tests / full package check (uncomment when needed)
 # devtools::test()
 devtools::check()
+
 

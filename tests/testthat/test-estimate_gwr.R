@@ -1,79 +1,83 @@
-# Uses the real spatial layout of GWmodel's LondonHP points, extended into a
-# short per-unit panel so there is a covariate to regress the response on.
+# Unified estimate_gwr(): plain GWR, fixed-effects GWR, fit stats, opt-in SEs.
 
-load_londonhp <- function() {
-  e <- new.env()
-  utils::data("LondonHP", package = "GWmodel", envir = e)
-  e$londonhp
+# A panel: n units (lon = i, lat = 0), each observed 5 times with y = a_i + 2x.
+.gwr_fe_panel <- function(n = 6L, seed = 1L) {
+  set.seed(seed)
+  units <- paste0("u", seq_len(n))
+  do.call(rbind, lapply(seq_along(units), function(i) {
+    x <- rnorm(5)
+    data.frame(unit = units[i], lon = i, lat = 0, year = 1:5,
+               x = x, y = i * 10 + 2 * x + rnorm(5, sd = 0.01),
+               stringsAsFactors = FALSE)
+  }))
 }
 
-test_that("estimate_gwr_by_point returns the expected schema and finite fits", {
-  skip_if_not_installed("GWmodel")
-  skip_if_not_installed("sp")
+test_that("plain GWR: flat weights recover global OLS at every unit (estimand = mean)", {
+  skip_if_not_installed("GWmodel"); skip_if_not_installed("sp")
+  d <- .gwr_fe_panel(); d$z <- rnorm(nrow(d))
+  ols <- coef(lm(y ~ x + z, data = d))
 
-  sp_pts <- load_londonhp()
-  co     <- sp::coordinates(sp_pts)
+  out <- estimate_gwr(d, unit = "unit", formula = y ~ x + z,
+    coords = c("lon", "lat"), kernel = "boxcar", adaptive = FALSE, bw = 1e6)
 
-  set.seed(1L)
-  n   <- min(60L, nrow(co))
-  sel <- sample.int(nrow(co), n)
-  b   <- seq_len(n) / n                       # a distinct "true" slope per unit
-  tt  <- 0:5                                  # covariate values within each unit
-
-  panel <- do.call(rbind, lapply(seq_len(n), function(i) {
-    data.frame(
-      unit  = paste0("u", i),
-      lon   = co[sel[i], 1],
-      lat   = co[sel[i], 2],
-      trend = tt,
-      y     = 10 + b[i] * tt + rnorm(length(tt), sd = 0.05),
-      stringsAsFactors = FALSE
-    )
-  }))
-
-  res <- estimate_gwr_by_point(
-    panel, unit = "unit", response = "y", covariate = "trend",
-    coords = c("lon", "lat"), distance_metric = "Euclidean",
-    kernel = "bisquare", adaptive = FALSE, variance = TRUE
-  )
-
-  expect_s3_class(res, "data.table")
-  expect_equal(nrow(res), n)
-  expect_true(all(c("term", "unit_id", "unit_level",
-                    "mean_estimate", "mean_standard_error", "mean_t_value",
-                    "mean_p_value", "var_estimate", "var_p_value",
-                    "model_estimator") %in% names(res)))
-  expect_identical(sort(res$unit_id), sort(paste0("u", seq_len(n))))
-  expect_true(all(res$model_estimator == "gwr"))
-  expect_true(all(res$unit_level == "unit"))
-
-  # local slopes should be recovered for the bulk of units (allow a few NA at
-  # degenerate/edge locations)
-  expect_gt(mean(is.finite(res$mean_estimate)), 0.5)
-  expect_gt(mean(is.finite(res$mean_p_value)),  0.5)
+  expect_s3_class(out, "data.table")
+  expect_true(all(out$estimand == "mean"))
+  expect_true(all(out$model_estimator == "gwr"))
+  expect_setequal(unique(out$term), c("(Intercept)", "x", "z"))
+  for (tm in names(ols)) {
+    v <- out[term == tm, estimate]
+    expect_equal(v, rep(unname(ols[tm]), length(v)), tolerance = 1e-8)
+  }
 })
 
-test_that("variance = FALSE omits the variance columns", {
-  skip_if_not_installed("GWmodel")
-  skip_if_not_installed("sp")
+test_that("FE mode recovers the within slope and tags gwfe + NFE", {
+  skip_if_not_installed("GWmodel"); skip_if_not_installed("sp")
+  d <- .gwr_fe_panel()
+  d$x_dm <- d$x - ave(d$x, d$unit); d$y_dm <- d$y - ave(d$y, d$unit)
+  within <- unname(coef(lm(y_dm ~ x_dm, data = d))["x_dm"])
 
-  sp_pts <- load_londonhp()
-  co     <- sp::coordinates(sp_pts)
+  out <- estimate_gwr(d, unit = "unit", formula = y ~ x,
+    panel = "unit", time = "year", coords = c("lon", "lat"),
+    kernel = "boxcar", adaptive = FALSE, bw = 1e6)
 
-  set.seed(2L)
-  n   <- min(40L, nrow(co))
-  sel <- sample.int(nrow(co), n)
-  tt  <- 0:4
-  panel <- do.call(rbind, lapply(seq_len(n), function(i) {
-    data.frame(unit = paste0("u", i), lon = co[sel[i], 1], lat = co[sel[i], 2],
-               trend = tt, y = 5 + 0.2 * tt + rnorm(length(tt), sd = 0.05))
-  }))
+  expect_true(all(out$model_estimator == "gwfe"))
+  xs <- out[term == "x", estimate]
+  expect_equal(xs, rep(within, length(xs)), tolerance = 1e-6)
+  expect_equal(unname(attr(out, "NFE")), length(unique(d$unit)))
+})
 
-  res <- estimate_gwr_by_point(
-    panel, unit = "unit", response = "y", covariate = "trend",
-    coords = c("lon", "lat"), distance_metric = "Euclidean",
-    adaptive = FALSE, variance = FALSE
-  )
-  expect_true("mean_estimate" %in% names(res))
-  expect_false("var_estimate" %in% names(res))
+test_that("fit_stats attaches finite within-R^2 and n_obs", {
+  skip_if_not_installed("GWmodel"); skip_if_not_installed("sp")
+  d <- .gwr_fe_panel()
+  out <- estimate_gwr(d, unit = "unit", formula = y ~ x,
+    panel = "unit", time = "year", coords = c("lon", "lat"),
+    kernel = "boxcar", adaptive = FALSE, bw = 1e6, fit_stats = TRUE, terms = "x")
+  expect_true(all(c("r_squared", "n_obs") %in% names(out)))
+  expect_true(all(is.finite(out$r_squared)))
+  expect_true(all(out$r_squared >= 0 & out$r_squared <= 1))
+})
+
+test_that("standard errors are opt-in (off by default) and match lm under flat weights", {
+  skip_if_not_installed("GWmodel"); skip_if_not_installed("sp")
+  d <- .gwr_fe_panel(); d$z <- rnorm(nrow(d))
+
+  off <- estimate_gwr(d, unit = "unit", formula = y ~ x + z,
+    coords = c("lon", "lat"), kernel = "boxcar", adaptive = FALSE, bw = 1e6)
+  expect_true(all(is.na(off$se)))
+
+  sm <- coef(summary(lm(y ~ x + z, data = d)))
+  on <- estimate_gwr(d, unit = "unit", formula = y ~ x + z,
+    coords = c("lon", "lat"), kernel = "boxcar", adaptive = FALSE, bw = 1e6,
+    standard_errors = TRUE)
+  one <- on[unit_id == "u1" & estimand == "mean"][match(rownames(sm), term)]
+  expect_equal(one$se, unname(sm[, "Std. Error"]), tolerance = 1e-6)
+})
+
+test_that("terms filter restricts the returned terms", {
+  skip_if_not_installed("GWmodel"); skip_if_not_installed("sp")
+  d <- .gwr_fe_panel(); d$z <- rnorm(nrow(d))
+  out <- estimate_gwr(d, unit = "unit", formula = y ~ x + z,
+    coords = c("lon", "lat"), kernel = "boxcar", adaptive = FALSE, bw = 1e6,
+    terms = "x")
+  expect_equal(unique(out$term), "x")
 })

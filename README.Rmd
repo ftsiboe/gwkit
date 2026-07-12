@@ -34,7 +34,7 @@ devtools::document()
 ![R >= 4.1](https://img.shields.io/badge/R-%3E=4.1-blue)
 <!-- badges: end -->
 
-# Introduction
+# Overview
 
 `gwkit` is a convenience toolkit of wrappers and reproducible workflows around
 [`GWmodel`](https://cran.r-project.org/package=GWmodel) and related spatial
@@ -60,37 +60,64 @@ It depends on `GWmodel`, `sf`, `terra`, and `sp`; the county workflow also uses
 
 # Supported functionalities
 
-**Geographically weighted summary statistics** — local means, standard
-deviations, and related statistics at points, polygons, or U.S. counties:
+Each estimator is a single, spatial-unit-agnostic call. Point vs polygon mode is
+**class-detected**: pass an `sf`/`SpatVector` `geometry` and units are reduced to
+their point-on-surface (Queen contiguity from shared boundaries); otherwise the
+`coords` columns of the table are used (lattice contiguity).
 
-* `estimate_gwss_by_point()`
-* `estimate_gwss_by_polygon()`
-* `estimate_gwss_by_county()`
+**Geographically weighted summary statistics** (`estimate_gwss()`) — local means,
+standard deviations, and, for two or more variables, the local
+covariance/correlation at each unit.
 
-**Geographically weighted mean/variance regression** — a local regression of a
-`response` on a `covariate`, returning the local slope on the mean and
-(optionally) on the variance of the response, with local standard errors,
-t-values, and p-values:
+**Geographically weighted regression** (`estimate_gwr()`) — a local regression
+returning the slope on the mean (and optionally the variance) of the response in
+a LONG table. Supplying `panel`/`time` switches to a **fixed-effects** local fit
+(Frisch–Waugh–Lovell within transform), so the slope is identified from
+within-unit, over-time variation.
 
-* `estimate_gwr_by_point()`
-* `estimate_gwr_by_polygon()`
+**Geographically weighted spatial lag** (`estimate_gwlag()`) — the geographically
+weighted mean of a variable over each unit's neighbours (`include_self = FALSE`),
+the neighbouring-exposure term used in availability metrics.
 
 **Distance-metric presets** — Euclidean, Manhattan, Minkowski, Chebyshev, and
-Great Circle:
-
-* `gw_distance_metric_presets()`
-* `gw_distance_metric_names()`
-* `resolve_distance_metric()`
+Great Circle, via `gw_distance_metric_presets()`, `gw_distance_metric_names()`,
+and `resolve_distance_metric()`.
 
 **Consensus across the kernel × distance-metric domain** — reduce results
-estimated over a grid of GW settings to a single class per unit (the mode across
-settings), with optional first-order **Queen contiguity** reconciliation that
-widens the neighbourhood order to break ties:
-
-* `gw_optimal_class_by_point()`
-* `gw_optimal_class_by_polygon()`
+estimated over a grid of GW settings to one per-unit summary: `gw_consensus_scalar()`
+for continuous estimates (robust reducer + sign-agreement share) and
+`gw_consensus_class()` for categorical classes (modal class + Queen-contiguity
+vote), both with optional first-order **Queen contiguity** de-speckling.
 
 # Examples
+
+A worked, end-to-end study lives in
+[`data-raw/examples`](https://github.com/ftsiboe/gwkit/tree/main/data-raw/examples).
+Using the packaged `us_state_ag_census` dataset, it asks a two-part question:
+does farmland trade at a **risk discount** — cheaper where production risk is
+higher — and does the **Federal Crop Insurance Program (FCIP)** offset that
+discount where participation is high? The local regression is
+
+$$Y = a_0 + a_1\,r + a_2\,x + a_3\,(r\cdot x) + \text{(state FE)},$$
+
+where `Y` is `log(ag_land_value_per_acre)`, the risk proxy `r` is the FCIP base
+premium rate (`fcip_base_rate`), and participation `x` is `fcip_adoption`.
+`a1` is the **risk discount** (expected `< 0`) and `a3` the
+**FCIP mitigation** (expected `> 0`); geographically weighted estimation maps
+where each holds. A live caveat runs through the examples: separating `a1` from
+permanent between-state differences requires within-state, over-time variation in
+risk, which fixed effects strip — example 06 shows how thin that variation is.
+The packaged data is state-level (a methods demo); the substantive design is
+parcel-level.
+
+| Function | Role in the study |
+|---|---|
+| `estimate_gwr()` | local risk discount `a1` & FCIP mitigation `a3` (cross-section + FE panel) — [01_estimate_gwr](https://github.com/ftsiboe/gwkit/blob/main/data-raw/examples/01_estimate_gwr.md) |
+| `estimate_gwlag()` | the surrounding risk & insurance environment (spatial lag) — [02_estimate_gwlag](https://github.com/ftsiboe/gwkit/blob/main/data-raw/examples/02_estimate_gwlag.md) |
+| `estimate_gwss()` | where risk and value co-move (local correlation) — [03_estimate_gwss](https://github.com/ftsiboe/gwkit/blob/main/data-raw/examples/03_estimate_gwss.md) |
+| `gw_consensus_scalar()` | is the discount spec-robust? (consensus `a1` + sign agreement) — [04_gw_consensus_scalar](https://github.com/ftsiboe/gwkit/blob/main/data-raw/examples/04_gw_consensus_scalar.md) |
+| `gw_consensus_class()` | sign class of the discount (modal + Queen vote) — [05_gw_consensus_class](https://github.com/ftsiboe/gwkit/blob/main/data-raw/examples/05_gw_consensus_class.md) |
+| `gw_distance_metric_presets()` / `resolve_distance_metric()` / `fixed_effect_model_data_prep()` | building blocks + the FE identification problem — [06_building_blocks](https://github.com/ftsiboe/gwkit/blob/main/data-raw/examples/06_building_blocks.md) |
 
 The distance-metric presets are self-contained:
 
@@ -99,40 +126,20 @@ library(gwkit)
 gw_distance_metric_names()
 ```
 
-## Example 1: Geographically weighted mean/variance regression at points
+The flagship call fits the risk-discount model locally at every state, with
+polygon geometry supplied directly (the interaction is a pre-built column so it
+survives fixed-effects demeaning):
 
-Fit a local regression of `response` on `covariate` (one row per
-unit-observation), returning the local slope on the mean and on the variance:
-
-```{r gwr_point, eval=FALSE}
-est <- estimate_gwr_by_point(
-  data      = observations,          # one row per unit-observation
-  unit      = "grid_id",
-  response  = "precipitation",
-  covariate = "trend",
-  coords    = c("longitude", "latitude"),
-  kernel    = "bisquare",
-  distance_metric = "Great Circle"
+```{r gwr_example, eval=FALSE}
+data(us_state_ag_census)
+gwr <- estimate_gwr(
+  data    = d_cs, unit = "state_code",
+  formula = lv ~ base_rate + participation + rate_x_part,   # lv = log($/acre)
+  geometry = states, poly_id = "state_code",
+  distance_metric = "Great Circle", kernel = "bisquare",
+  adaptive = TRUE, bw = 12, terms = "base_rate"    # a1 = local risk discount
 )
 ```
-
-## Example 2: Optimal class across a grid of GW settings
-
-Sweep several kernel × distance-metric settings, then pick the optimal class per
-unit — the mode across settings, de-speckled by a first-order Queen contiguity
-vote (ties widen the neighbourhood order):
-
-```{r consensus, eval=FALSE}
-optimal <- gw_optimal_class_by_point(
-  class_dt  = stacked_settings,      # rows stacked over kernel x distance_metric
-  unit_col  = "grid_id",
-  class_col = "trend_class_05"
-)
-```
-
-The polygon variants (`estimate_gwr_by_polygon()`,
-`gw_optimal_class_by_polygon()`) take a `terra` `SpatVector` or `sf` layer and
-derive centroids / Queen contiguity from the geometry.
 
 # 📚 Citation
 

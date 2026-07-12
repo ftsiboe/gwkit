@@ -11,15 +11,14 @@
 #'
 #' @section Main function families:
 #' \describe{
-#'   \item{Geographically weighted summary statistics}{
-#'     `estimate_gwss_by_point()`, `estimate_gwss_by_polygon()`,
-#'     `estimate_gwss_by_county()`.}
-#'   \item{Geographically weighted mean/variance regression}{
-#'     `estimate_gwr_by_point()`, `estimate_gwr_by_polygon()`.}
+#'   \item{Geographically weighted summary statistics}{`estimate_gwss()`.}
+#'   \item{Geographically weighted spatial lag}{`estimate_gwlag()`.}
+#'   \item{Geographically weighted regression (plain, fixed-effects, mean/variance)}{
+#'     `estimate_gwr()`.}
 #'   \item{Distance-metric presets}{`gw_distance_metric_presets()`,
 #'     `gw_distance_metric_names()`, `resolve_distance_metric()`.}
 #'   \item{Consensus across the kernel x distance-metric domain}{
-#'     `gw_optimal_class_by_point()`, `gw_optimal_class_by_polygon()`.}
+#'     `gw_consensus_scalar()`, `gw_consensus_class()`.}
 #' }
 #'
 #' @keywords internal

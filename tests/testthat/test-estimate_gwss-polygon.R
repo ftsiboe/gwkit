@@ -1,11 +1,9 @@
-# Exercises the estimate_gwss_by_polygon body (join, points-on-surface, bandwidth
-# CV, gwss) on a small synthetic sf lattice, plus its "too few observed" guard.
-#
-# "Great Circle" is used so the internal reprojection is a no-op to EPSG:4326.
-# With a non-longlat metric the function projects to `target_crs` (5070, a US
-# CRS), which would distort this synthetic lat/lon lattice.
+# Polygon mode of estimate_gwss() (join, points-on-surface, bandwidth CV, gwss)
+# on a small synthetic sf lattice, plus its "too few observed" guard.
+# "Great Circle" keeps the internal reprojection a no-op to EPSG:4326; a
+# non-longlat metric would project the synthetic lat/lon lattice to a US CRS.
 
-test_that("estimate_gwss_by_polygon returns local summaries at all polygons", {
+test_that("estimate_gwss (polygon mode) returns local summaries at all polygons", {
   skip_if_not_installed("GWmodel")
   skip_if_not_installed("sf")
   skip_if_not_installed("sp")
@@ -16,11 +14,11 @@ test_that("estimate_gwss_by_polygon returns local summaries at all polygons", {
   dat <- data.frame(pid = pg$pid, v = stats::rnorm(nrow(pg), mean = 10),
                     stringsAsFactors = FALSE)
 
-  res <- estimate_gwss_by_polygon(
+  res <- estimate_gwss(
     data            = dat,
-    shape_file      = pg,
-    fip_col         = "pid",
     variable_list   = "v",
+    geometry        = pg,
+    id_col          = "pid",
     distance_metric = "Great Circle",
     kernel          = "gaussian",
     adaptive        = TRUE
@@ -33,7 +31,7 @@ test_that("estimate_gwss_by_polygon returns local summaries at all polygons", {
   expect_true(any(grepl("_LM$", names(res))))
 })
 
-test_that("estimate_gwss_by_polygon returns NULL when too few polygons are observed", {
+test_that("estimate_gwss (polygon mode) returns NULL when too few polygons are observed", {
   skip_if_not_installed("sf")
   skip_if_not_installed("dplyr")
 
@@ -41,8 +39,8 @@ test_that("estimate_gwss_by_polygon returns NULL when too few polygons are obser
   dat <- data.frame(pid = pg$pid[1:3], v = c(1, 2, 3), stringsAsFactors = FALSE)
 
   expect_message(
-    res <- estimate_gwss_by_polygon(dat, pg, "pid", "v",
-                                    distance_metric = "Great Circle"),
+    res <- estimate_gwss(data = dat, variable_list = "v", geometry = pg,
+                         id_col = "pid", distance_metric = "Great Circle"),
     "Too few"
   )
   expect_null(res)

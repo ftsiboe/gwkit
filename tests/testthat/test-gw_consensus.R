@@ -20,9 +20,9 @@ make_lattice_class_dt <- function(nx = 4L, ny = 4L, settings = 3L,
   list(dt = do.call(rbind, rows), units = units, truth = truth)
 }
 
-test_that("gw_optimal_class_by_point returns one row per unit with expected columns", {
+test_that("gw_consensus_class (point) returns one row per unit with expected columns", {
   fx  <- make_lattice_class_dt()
-  res <- gw_optimal_class_by_point(
+  res <- gw_consensus_class(
     fx$dt, unit_col = "unit", class_col = "class",
     coords = c("lon", "lat"), class_levels = c("A", "B")
   )
@@ -36,7 +36,7 @@ test_that("gw_optimal_class_by_point returns one row per unit with expected colu
 
 test_that("modal class is the mode across settings and agreement is 1 when unanimous", {
   fx  <- make_lattice_class_dt()
-  res <- gw_optimal_class_by_point(
+  res <- gw_consensus_class(
     fx$dt, unit_col = "unit", class_col = "class",
     coords = c("lon", "lat"), class_levels = c("A", "B")
   )
@@ -48,7 +48,7 @@ test_that("modal class is the mode across settings and agreement is 1 when unani
 
 test_that("queen vote resolves and reports the order it resolved at", {
   fx  <- make_lattice_class_dt()
-  res <- gw_optimal_class_by_point(
+  res <- gw_consensus_class(
     fx$dt, unit_col = "unit", class_col = "class",
     coords = c("lon", "lat"), class_levels = c("A", "B")
   )

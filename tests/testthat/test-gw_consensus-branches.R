@@ -2,7 +2,7 @@
 # the polygon variant (shared-boundary Queen contiguity), include_self = FALSE,
 # tie-driven Queen order expansion, and isolated units.
 
-test_that("gw_optimal_class_by_polygon works on an sf polygon layer", {
+test_that("gw_consensus_class (polygon) works on an sf polygon layer", {
   skip_if_not_installed("sf")
 
   pg    <- make_sf_grid(4L, id_col = "pid")
@@ -14,8 +14,8 @@ test_that("gw_optimal_class_by_polygon works on an sf polygon layer", {
                class = rep(truth[i], 3), stringsAsFactors = FALSE)
   }))
 
-  res <- gw_optimal_class_by_polygon(
-    cls, unit_col = "pid", polygons = pg, class_col = "class",
+  res <- gw_consensus_class(
+    cls, unit_col = "pid", geometry =pg, class_col = "class",
     poly_id = "pid", class_levels = c("A", "B")
   )
 
@@ -27,11 +27,11 @@ test_that("gw_optimal_class_by_polygon works on an sf polygon layer", {
   expect_true(all(res$modal_agreement == 1))
 })
 
-test_that("gw_optimal_class_by_polygon rejects a non-spatial polygons argument", {
+test_that("gw_consensus_class (polygon) rejects a non-spatial polygons argument", {
   cls <- data.frame(pid = "p1", class = "A", stringsAsFactors = FALSE)
   expect_error(
-    gw_optimal_class_by_polygon(cls, unit_col = "pid",
-                                polygons = data.frame(pid = "p1"),
+    gw_consensus_class(cls, unit_col = "pid",
+                                geometry =data.frame(pid = "p1"),
                                 class_col = "class"),
     "SpatVector or an sf"
   )
@@ -59,7 +59,7 @@ test_that("Queen vote widens the order to break a tie, and isolates return NA", 
                stringsAsFactors = FALSE)
   )
 
-  res <- gw_optimal_class_by_point(
+  res <- gw_consensus_class(
     dt, unit_col = "unit", class_col = "class", coords = c("lon", "lat"),
     class_levels = c("A", "B"), include_self = FALSE
   )

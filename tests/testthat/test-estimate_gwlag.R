@@ -10,7 +10,7 @@
 }
 
 test_that("neighbour mean excludes self by default (boxcar, flat weights)", {
-  out <- estimate_gwlag_by_point(.lag_fixture(), unit = "unit", value_cols = "z",
+  out <- estimate_gwlag(.lag_fixture(), unit = "unit", value_cols = "z",
                                  kernel = "boxcar", adaptive = FALSE, bw = 10,
                                  distance_metric = "Euclidean", include_self = FALSE)
   out <- out[match(c("a", "b", "c"), out$unit)]
@@ -19,7 +19,7 @@ test_that("neighbour mean excludes self by default (boxcar, flat weights)", {
 })
 
 test_that("include_self = TRUE averages over all units", {
-  out <- estimate_gwlag_by_point(.lag_fixture(), unit = "unit", value_cols = "z",
+  out <- estimate_gwlag(.lag_fixture(), unit = "unit", value_cols = "z",
                                  kernel = "boxcar", adaptive = FALSE, bw = 10,
                                  include_self = TRUE)
   out <- out[match(c("a", "b", "c"), out$unit)]
@@ -28,7 +28,7 @@ test_that("include_self = TRUE averages over all units", {
 
 test_that("multiple value columns are lagged in one pass", {
   d <- .lag_fixture(); d$w <- c(1, 2, 3)
-  out <- estimate_gwlag_by_point(d, unit = "unit", value_cols = c("z", "w"),
+  out <- estimate_gwlag(d, unit = "unit", value_cols = c("z", "w"),
                                  kernel = "boxcar", adaptive = FALSE, bw = 10,
                                  include_self = FALSE)
   out <- out[match(c("a", "b", "c"), out$unit)]
@@ -42,7 +42,7 @@ test_that("by_polygon returns one lag row per polygon and finite values", {
   skip_if_not_installed("sf")
   g   <- make_sf_grid(n = 3L, id_col = "pid")     # 9 polygons p1..p9
   dat <- data.frame(pid = g$pid, z = seq_along(g$pid), stringsAsFactors = FALSE)
-  out <- estimate_gwlag_by_polygon(dat, unit = "pid", polygons = g,
+  out <- estimate_gwlag(dat, unit = "pid", geometry =g,
                                    value_cols = "z", kernel = "bisquare",
                                    adaptive = FALSE, bw = 5, include_self = FALSE)
   expect_s3_class(out, "data.table")
@@ -53,6 +53,6 @@ test_that("by_polygon returns one lag row per polygon and finite values", {
 
 test_that("by_polygon errors on a non-polygon input", {
   expect_error(
-    estimate_gwlag_by_polygon(data.frame(pid = "p1", z = 1), unit = "pid",
-                              polygons = "nope", value_cols = "z"))
+    estimate_gwlag(data.frame(pid = "p1", z = 1), unit = "pid",
+                              geometry ="nope", value_cols = "z"))
 })
