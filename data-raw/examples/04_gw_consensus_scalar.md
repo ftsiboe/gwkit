@@ -1,0 +1,96 @@
+gwkit example 04 — `gw_consensus_scalar()`: is the risk discount
+spec-robust?
+================
+
+The local risk discount `a1` from example 01 depends on the kernel ×
+distance- metric choice. `gw_consensus_scalar()` reduces `a1` across
+**all 50 specifications** (10 distance presets × 5 kernels) to one
+robust per-state consensus, plus a **sign-agreement** share telling us
+where the discount is stable versus an artefact of one kernel.
+
+``` r
+library(data.table); library(sf); library(ggplot2)
+source("_setup.R")     # loads gwkit (dev tree if present) + the ERS framework
+
+data(us_state_ag_census)
+d <- data.table::copy(us_state_ag_census)
+d[, lv            := log(ag_land_value_per_acre)]
+d[, base_rate     := fcip_base_rate]
+d[, participation := fcip_adoption]
+d[, rate_x_part   := base_rate * participation]
+d <- d[is.finite(lv) & is.finite(base_rate) & is.finite(participation)]
+d_cs <- d[census_year == max(census_year)]
+
+states <- urbnmapr::get_urbn_map("states", sf = TRUE)
+states$state_code <- as.integer(states$state_fips)
+states <- states[states$state_code %in% d_cs$state_code, ]
+```
+
+``` r
+specs <- data.table::CJ(dm = gw_distance_metric_names(),
+                        kernel = c("gaussian","exponential","bisquare","boxcar","tricube"),
+                        sorted = FALSE)
+
+stk <- data.table::rbindlist(lapply(seq_len(nrow(specs)), function(i) {
+  r <- tryCatch(estimate_gwr(
+        d_cs, unit = "state_code",
+        formula = lv ~ base_rate + participation + rate_x_part,
+        geometry = states, poly_id = "state_code",
+        distance_metric = specs$dm[i], kernel = specs$kernel[i],
+        adaptive = TRUE, bw = 12, terms = "base_rate"),
+        error = function(e) NULL)
+  if (is.null(r)) return(NULL)
+  r[term == "base_rate" & estimand == "mean",
+    .(state_code = unit_id, distance_metric = specs$dm[i],
+      kernel = specs$kernel[i], estimate)]
+}), fill = TRUE)
+
+nrow(stk)   # ~ 50 specs x n_states
+```
+
+    ## [1] 2350
+
+``` r
+cons <- gw_consensus_scalar(
+  stk, unit_col = "state_code", value_col = "estimate",
+  geometry = states, poly_id = "state_code", agg_fun = stats::median)
+cons[, state_code := as.integer(state_code)]
+head(cons[, .(state_code, consensus, sign_agreement, n_settings)])
+```
+
+    ##    state_code  consensus sign_agreement n_settings
+    ##         <int>      <num>          <num>      <int>
+    ## 1:          1  -7.008371           1.00         50
+    ## 2:          4 -22.645660           0.96         50
+    ## 3:          8  -8.336559           0.62         50
+    ## 4:          9  -9.022065           0.96         50
+    ## 5:         12  -8.007564           1.00         50
+    ## 6:         13  -7.958113           0.94         50
+
+``` r
+m <- merge(states, cons[, .(state_code, consensus, sign_agreement)],
+           by = "state_code")
+gw_diverging_map(
+  m, "consensus",
+  title    = "Spec-robust risk discount (median a1 across 50 specs)",
+  subtitle = "gw_consensus_scalar()",
+  legend   = "Consensus\na1",
+  caption  = "Red = discount robust to kernel/metric choice")
+```
+
+![](04_gw_consensus_scalar_files/figure-gfm/consensus-map-1.png)<!-- -->
+
+``` r
+gw_sequential_map(
+  m, "sign_agreement",
+  title    = "Share of specifications agreeing on the sign of a1",
+  subtitle = "gw_consensus_scalar() sign_agreement",
+  legend   = "Sign\nagreement")
+```
+
+![](04_gw_consensus_scalar_files/figure-gfm/agreement-map-1.png)<!-- -->
+
+States with high **sign agreement** carry the same-signed discount under
+nearly every kernel/metric — the consensus there is trustworthy;
+low-agreement states are spec-sensitive and should not be
+over-interpreted.
