@@ -51,6 +51,8 @@ centroids.
 }
 \seealso{
 Other Geographically weighted regression: 
+\code{\link{estimate_gwfe_coefficients_by_point}()},
+\code{\link{estimate_gwfe_coefficients_by_polygon}()},
 \code{\link{estimate_gwr_by_point}()},
 \code{\link{estimate_gwr_coefficients_by_point}()},
 \code{\link{estimate_gwr_coefficients_by_polygon}()}
