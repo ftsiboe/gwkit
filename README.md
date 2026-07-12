@@ -16,7 +16,7 @@ experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](h
 ![R \>= 4.1](https://img.shields.io/badge/R-%3E=4.1-blue)
 <!-- badges: end -->
 
-# Introduction
+# Overview
 
 `gwkit` is a convenience toolkit of wrappers and reproducible workflows
 around [`GWmodel`](https://cran.r-project.org/package=GWmodel) and
@@ -96,16 +96,10 @@ estimation maps where each holds. A live caveat runs through the
 examples: separating `a1` from permanent between-state differences
 requires within-state, over-time variation in risk, which fixed effects
 strip — example 06 shows how thin that variation is. The packaged data
-is state-level (a methods demo); the substantive design is county-level.
-Each example ends in a map rendered through the study’s ERS/NDSU
-plotting framework (bundled in `data-raw/examples/_ers_framework.R`).
-Knit each `.Rmd` (`rmarkdown::render()`, `github_document`) to produce
-the linked `.md`.
+is state-level (a methods demo); the substantive design is parcel-level.
 
-| Function | Example |
-|----|----|
 | Function | Role in the study |
-| — | — |
+|----|----|
 | `estimate_gwr()` | local risk discount `a1` & FCIP mitigation `a3` (cross-section + FE panel) — [01_estimate_gwr](https://github.com/ftsiboe/gwkit/blob/main/data-raw/examples/01_estimate_gwr.md) |
 | `estimate_gwlag()` | the surrounding risk & insurance environment (spatial lag) — [02_estimate_gwlag](https://github.com/ftsiboe/gwkit/blob/main/data-raw/examples/02_estimate_gwlag.md) |
 | `estimate_gwss()` | where risk and value co-move (local correlation) — [03_estimate_gwss](https://github.com/ftsiboe/gwkit/blob/main/data-raw/examples/03_estimate_gwss.md) |

@@ -19,8 +19,8 @@
 # ============================================================
 
 # ------------------------------------------------------------
-# Internal engine. `obs` carries the source coordinates (Xo, Yo) and value_cols;
-# `tgt` carries the target coordinates (Xt, Yt) and the target ids.
+# Internal engine. `obs` carries the source coordinates (.gw_xo, .gw_yo) and
+# value_cols; `tgt` carries the target coordinates (.gw_xt, .gw_yt) and ids.
 # ------------------------------------------------------------
 .estimate_gwlag_core <- function(obs, tgt, unit, value_cols,
                                  p, theta, longlat, kernel, adaptive, bw,
@@ -32,8 +32,8 @@
   obs <- data.table::as.data.table(obs)
   tgt <- data.table::as.data.table(tgt)
 
-  obs_xy <- as.matrix(obs[, c("Xo", "Yo")])
-  tgt_xy <- as.matrix(tgt[, c("Xt", "Yt")])
+  obs_xy <- as.matrix(obs[, c(".gw_xo", ".gw_yo")])
+  tgt_xy <- as.matrix(tgt[, c(".gw_xt", ".gw_yt")])
 
   # bandwidth (once) if not supplied: bw.gwr(bw_response ~ 1) on the source set,
   # exactly as the availability step does (fixed-distance CV by default).
@@ -106,7 +106,8 @@
 #' @param distance_metric One of `gw_distance_metric_names()`. Default
 #'   `"Euclidean"`.
 #' @param kernel GW kernel. Default `"bisquare"`.
-#' @param adaptive Logical; adaptive (kNN) bandwidth if `TRUE`. Default `FALSE`.
+#' @param adaptive Logical; adaptive (kNN) bandwidth if `TRUE`. Default `FALSE`
+#'   (fixed-distance); note `estimate_gwr()`/`estimate_gwss()` default to `TRUE`.
 #' @param bw Optional pre-computed bandwidth. If `NULL`, selected once via
 #'   `GWmodel::bw.gwr(bw_response ~ 1)` on the source set.
 #' @param bw_response Column used for bandwidth selection when `bw` is `NULL`.

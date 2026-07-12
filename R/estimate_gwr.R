@@ -27,7 +27,7 @@
 # fit_stats). Point estimates are identical to a per-unit stats::lm().
 # ============================================================
 
-utils::globalVariables(c("Xo", "Yo", "Xt", "Yt", "uid", "X", "Y",
+utils::globalVariables(c("uid",
                          "longitude", "latitude", "term", "estimand", "estimate",
                          "se", "tv", "pv", "r_squared", "n_obs",
                          "unit_level", "model_estimator"))
@@ -52,8 +52,8 @@ utils::globalVariables(c("Xo", "Yo", "Xt", "Yt", "uid", "X", "Y",
 
 
 # ------------------------------------------------------------
-# Internal engine. `obs` carries source coords (Xo, Yo) and the (already
-# demeaned, if FE) model variables; `tgt` carries target coords (Xt, Yt) and ids.
+# Internal engine. `obs` carries source coords (.gw_xo, .gw_yo) and the (already
+# demeaned, if FE) model variables; `tgt` carries target coords (.gw_xt, .gw_yt).
 # ------------------------------------------------------------
 .estimate_gwr_core <- function(obs, tgt, unit, formula,
                                p, theta, longlat, kernel, adaptive, bw, bw_approach,
@@ -69,7 +69,7 @@ utils::globalVariables(c("Xo", "Yo", "Xt", "Yt", "uid", "X", "Y",
   tgt <- data.table::as.data.table(tgt)
 
   fin <- Reduce(`&`, lapply(vars, function(v) is.finite(as.numeric(obs[[v]]))))
-  fin <- fin & is.finite(obs$Xo) & is.finite(obs$Yo)
+  fin <- fin & is.finite(obs[[".gw_xo"]]) & is.finite(obs[[".gw_yo"]])
   obs <- obs[fin]
   if (nrow(obs) < (length(vars) + 1L)) return(NULL)
 
@@ -77,8 +77,8 @@ utils::globalVariables(c("Xo", "Yo", "Xt", "Yt", "uid", "X", "Y",
   mf <- stats::model.frame(formula, obs_df)
   mm <- stats::model.matrix(attr(mf, "terms"), mf)   # built once (incl. intercept)
   y  <- as.numeric(stats::model.response(mf))
-  obs_xy <- as.matrix(obs[, c("Xo", "Yo")])
-  tgt_xy <- as.matrix(tgt[, c("Xt", "Yt")])
+  obs_xy <- as.matrix(obs[, c(".gw_xo", ".gw_yo")])
+  tgt_xy <- as.matrix(tgt[, c(".gw_xt", ".gw_yt")])
 
   fit <- .gw_local_fit(mm = mm, y = y, obs_xy = obs_xy, tgt_xy = tgt_xy,
                        p = p, theta = theta, longlat = longlat,
@@ -162,7 +162,10 @@ utils::globalVariables(c("Xo", "Yo", "Xt", "Yt", "uid", "X", "Y",
 #' @param kernel GW kernel. Default `"bisquare"`.
 #' @param adaptive Logical; adaptive (kNN) bandwidth if `TRUE`. Default `TRUE`.
 #' @param bw Optional pre-computed bandwidth. If `NULL`, selected once via
-#'   `GWmodel::bw.gwr()` on the (demeaned) response.
+#'   `GWmodel::bw.gwr()` on the (demeaned) response, intercept-only (`. ~ 1`):
+#'   the bandwidth targets the response surface, not the full covariate model.
+#'   Model columns may be named anything (including `X`/`Y`) - internal
+#'   coordinate columns are dot-prefixed and will not collide.
 #' @param bw_approach Bandwidth criterion. Default `"CV"`.
 #' @param variance Logical; also fit the local slope of the log-squared residuals
 #'   (a heteroskedasticity companion), returned as `estimand == "variance"` rows.

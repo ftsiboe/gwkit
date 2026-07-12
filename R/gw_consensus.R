@@ -37,8 +37,8 @@ utils::globalVariables(c(".u", ".c", ".v", ".N", "longitude", "latitude",
   is_poly <- inherits(geometry, c("sf", "SpatVector"))
   if (is_poly) {
     cds <- .gwkit_centroids(geometry, poly_id = poly_id, longlat = TRUE)
-    ci  <- match(unit_ids, as.character(cds[["uid"]]))
-    xy  <- cbind(cds$X[ci], cds$Y[ci])
+    ci  <- match(unit_ids, as.character(cds[[".gw_uid"]]))
+    xy  <- cbind(cds[[".gw_x"]][ci], cds[[".gw_y"]][ci])
   } else if (!is.null(geometry)) {
     stop("`geometry` must be a terra SpatVector or an sf object.")
   } else {

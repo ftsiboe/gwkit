@@ -23,7 +23,7 @@ estimate_gwr(
   fit_stats = FALSE,
   standard_errors = FALSE,
   terms = NULL,
-  eps = 0.00000001
+  eps = 1e-08
 )
 }
 \arguments{
@@ -61,7 +61,10 @@ GW fit and \code{model_estimator} is \code{"gwfe"}; otherwise \code{"gwr"}.}
 \item{adaptive}{Logical; adaptive (kNN) bandwidth if \code{TRUE}. Default \code{TRUE}.}
 
 \item{bw}{Optional pre-computed bandwidth. If \code{NULL}, selected once via
-\code{GWmodel::bw.gwr()} on the (demeaned) response.}
+\code{GWmodel::bw.gwr()} on the (demeaned) response, intercept-only (\code{. ~ 1}):
+the bandwidth targets the response surface, not the full covariate model.
+Model columns may be named anything (including \code{X}/\code{Y}) - internal
+coordinate columns are dot-prefixed and will not collide.}
 
 \item{bw_approach}{Bandwidth criterion. Default \code{"CV"}.}
 

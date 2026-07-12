@@ -42,6 +42,14 @@ utils::globalVariables(c("value", "longitude", "latitude",
   if (n_obs < 5L) { message("Too few observed units to fit GW smoothing."); return(NULL) }
 
   n_sub <- min(n_obs - 1L, max(5L, ceiling(draw_rate * n_obs)))
+  # Deterministic subsample for the bandwidth WITHOUT disturbing the caller's RNG
+  # stream: snapshot .Random.seed and restore it on exit.
+  if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+    .old_seed <- get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+    on.exit(assign(".Random.seed", .old_seed, envir = .GlobalEnv), add = TRUE)
+  } else {
+    on.exit(suppressWarnings(rm(".Random.seed", envir = .GlobalEnv)), add = TRUE)
+  }
   set.seed(1L)
   sub_ids    <- sample.int(n_obs, n_sub)
   coords_sub <- coords_obs[sub_ids, , drop = FALSE]

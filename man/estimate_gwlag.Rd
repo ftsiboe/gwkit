@@ -49,7 +49,8 @@ mode). Defaults to the units in \code{data}.}
 
 \item{kernel}{GW kernel. Default \code{"bisquare"}.}
 
-\item{adaptive}{Logical; adaptive (kNN) bandwidth if \code{TRUE}. Default \code{FALSE}.}
+\item{adaptive}{Logical; adaptive (kNN) bandwidth if \code{TRUE}. Default \code{FALSE}
+(fixed-distance); note \code{estimate_gwr()}/\code{estimate_gwss()} default to \code{TRUE}.}
 
 \item{bw}{Optional pre-computed bandwidth. If \code{NULL}, selected once via
 \code{GWmodel::bw.gwr(bw_response ~ 1)} on the source set.}

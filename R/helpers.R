@@ -11,8 +11,14 @@
 #                            boundary contiguity).
 # ============================================================
 
-utils::globalVariables(c(".u", ".c", ".v", ".N", "longitude", "latitude",
-                         "Xo", "Yo", "Xt", "Yt", "uid", "X", "Y"))
+utils::globalVariables(c(".u", ".c", ".v", ".N", "longitude", "latitude"))
+
+# Internal coordinate/id column names used to shuttle geometry between the
+# resolver and the estimator cores. Dot-prefixed so they never collide with a
+# user's model columns (a variable literally named `X`/`Y`/`Xo`... is legal).
+#   .gw_uid : unit id from the polygon layer
+#   .gw_x / .gw_y   : representative-point coordinates (centroids output)
+#   .gw_xo / .gw_yo : source (obs) coordinates ; .gw_xt / .gw_yt : target coords
 
 
 # ------------------------------------------------------------
@@ -29,16 +35,16 @@ utils::globalVariables(c(".u", ".c", ".v", ".N", "longitude", "latitude",
     pg  <- if (isTRUE(longlat) && !terra::is.lonlat(polygons))
              terra::project(polygons, "EPSG:4326") else polygons
     pt  <- terra::centroids(pg, inside = TRUE); xy <- terra::crds(pt)
-    data.table::data.table(uid = as.character(terra::values(pt)[[poly_id]]),
-                           X = xy[, 1L], Y = xy[, 2L])
+    data.table::data.table(.gw_uid = as.character(terra::values(pt)[[poly_id]]),
+                           .gw_x = xy[, 1L], .gw_y = xy[, 2L])
   } else if (inherits(polygons, "sf")) {
     if (!requireNamespace("sf", quietly = TRUE))
       stop("Package 'sf' is required for sf polygons.")
     pg  <- if (isTRUE(longlat)) sf::st_transform(polygons, 4326) else polygons
     pt  <- suppressWarnings(sf::st_point_on_surface(sf::st_geometry(pg)))
     xy  <- sf::st_coordinates(pt)
-    data.table::data.table(uid = as.character(sf::st_drop_geometry(pg)[[poly_id]]),
-                           X = xy[, 1L], Y = xy[, 2L])
+    data.table::data.table(.gw_uid = as.character(sf::st_drop_geometry(pg)[[poly_id]]),
+                           .gw_x = xy[, 1L], .gw_y = xy[, 2L])
   } else {
     stop("`polygons` must be a terra SpatVector or an sf object.")
   }
@@ -49,8 +55,8 @@ utils::globalVariables(c(".u", ".c", ".v", ".N", "longitude", "latitude",
 # Internal: class-detected geometry resolver for the regression estimators. A
 # polygon layer (from `geometry`, or from `data` itself when it is sf/SpatVector)
 # reduces each unit to its point-on-surface via .gwkit_centroids(); otherwise the
-# `coords` columns of `data` are used directly. Returns obs (unit, Xo, Yo, +
-# model cols) and tgt (unit, Xt, Yt). `predict` restricts the targets: a
+# `coords` columns of `data` are used directly. Returns obs (unit, .gw_xo,
+# .gw_yo, + model cols) and tgt (unit, .gw_xt, .gw_yt). `predict` restricts: a
 # character/id vector (or a data frame with `unit`) in polygon mode, a data frame
 # of point targets in point mode; NULL uses the unique units in `data`.
 # ------------------------------------------------------------
@@ -64,17 +70,23 @@ utils::globalVariables(c(".u", ".c", ".v", ".N", "longitude", "latitude",
   else if (inherits(data, c("sf", "SpatVector")))   poly <- data
 
   if (!is.null(poly)) {
-    cds <- .gwkit_centroids(poly, poly_id = poly_id, longlat = longlat)  # uid, X, Y
+    cds <- .gwkit_centroids(poly, poly_id = poly_id, longlat = longlat)  # .gw_uid/.gw_x/.gw_y
     d <- if (inherits(data, "sf")) {
            data.table::as.data.table(sf::st_drop_geometry(data))
          } else if (inherits(data, "SpatVector")) {
            data.table::as.data.table(terra::values(data))
          } else data.table::as.data.table(data)
     d[[unit]] <- as.character(d[[unit]])
-    obs <- merge(d, cds, by.x = unit, by.y = "uid", all.x = FALSE)
-    data.table::setnames(obs, c("X", "Y"), c("Xo", "Yo"))
+    n_units <- data.table::uniqueN(d[[unit]])
+    obs <- merge(d, cds, by.x = unit, by.y = ".gw_uid", all.x = FALSE)
+    n_dropped <- n_units - data.table::uniqueN(obs[[unit]])
+    if (n_dropped > 0L)
+      message(sprintf(
+        "gwkit: %d of %d unit(s) had no matching polygon in `geometry` (poly_id = '%s') and were dropped.",
+        n_dropped, n_units, poly_id))
+    data.table::setnames(obs, c(".gw_x", ".gw_y"), c(".gw_xo", ".gw_yo"))
     tgt <- data.table::copy(cds)
-    data.table::setnames(tgt, c("uid", "X", "Y"), c(unit, "Xt", "Yt"))
+    data.table::setnames(tgt, c(".gw_uid", ".gw_x", ".gw_y"), c(unit, ".gw_xt", ".gw_yt"))
     if (!is.null(predict)) {
       pid <- if (is.data.frame(predict)) as.character(predict[[unit]]) else as.character(predict)
       tgt <- tgt[get(unit) %in% pid]
@@ -82,14 +94,17 @@ utils::globalVariables(c(".u", ".c", ".v", ".N", "longitude", "latitude",
   } else {
     d <- data.table::as.data.table(data); d[[unit]] <- as.character(d[[unit]])
     obs <- data.table::copy(d)
-    obs[, `:=`(Xo = as.numeric(d[[coords[1L]]]), Yo = as.numeric(d[[coords[2L]]]))]
+    obs[, c(".gw_xo", ".gw_yo") := list(as.numeric(d[[coords[1L]]]),
+                                        as.numeric(d[[coords[2L]]]))]
     if (is.null(predict)) {
       tgt <- unique(data.table::copy(d), by = unit)
-      tgt[, `:=`(Xt = as.numeric(tgt[[coords[1L]]]), Yt = as.numeric(tgt[[coords[2L]]]))]
+      tgt[, c(".gw_xt", ".gw_yt") := list(as.numeric(tgt[[coords[1L]]]),
+                                          as.numeric(tgt[[coords[2L]]]))]
     } else {
       pd <- data.table::as.data.table(predict); pd[[unit]] <- as.character(pd[[unit]])
       tgt <- pd
-      tgt[, `:=`(Xt = as.numeric(pd[[coords[1L]]]), Yt = as.numeric(pd[[coords[2L]]]))]
+      tgt[, c(".gw_xt", ".gw_yt") := list(as.numeric(pd[[coords[1L]]]),
+                                          as.numeric(pd[[coords[2L]]]))]
     }
   }
   list(obs = obs, tgt = tgt, mode = if (!is.null(poly)) "polygon" else "point")

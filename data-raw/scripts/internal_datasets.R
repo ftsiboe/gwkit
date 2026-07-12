@@ -32,6 +32,10 @@
 rm(list = ls(all = TRUE)); gc()
 library(data.table)
 
+# Large piggyback downloads can exceed the default 60s timeout on slow links.
+# (gwkit itself no longer sets this globally on load - see R/zzz.R.)
+options(timeout = max(600L, getOption("timeout")))
+
 temp_dir <- tempdir()
 
 # --- Download the raw NASS Census extracts -----------------------------------
@@ -77,8 +81,8 @@ sobscc_all <- sobscc_all[
 
 fcip_data <- as.data.table(dplyr::inner_join(sobscc_all, fcip_rates))
 
-for(yr in unique(agCensusInsurance$census_year)){
-  fcip_data[commodity_year %in% (yr-2):(yr+2), census_year := yr]
+# Map each FCIP commodity_year to the nearest census wave (+/- 2 years).
+for (yr in unique(agCensusInsurance$census_year)) {
   fcip_data[commodity_year %in% (yr-2):(yr+2), census_year := yr]
 }
 
@@ -90,18 +94,29 @@ fcip_data <- fcip_data[
 fcip_data <- fcip_data[!census_year %in% NA]
 
 # --- Join and keep the documented analytic columns ---------------------------
-us_state_ag_census <- as.data.table(dplyr::inner_join(agCensusInsurance, agCensusAcres))
+us_state_ag_census <- as.data.table(dplyr::inner_join(
+  agCensusInsurance, agCensusAcres, by = c("state_code", "census_year")))
 us_state_ag_census[, year := NULL]
 us_state_ag_census <- us_state_ag_census[
   , .(state_code, census_year, crop_insurance_acres, cropland_acres,
       ag_land_value, ag_land)]
+
+# Augment with the FCIP risk/participation measures. LEFT join so the full
+# Census panel is retained (state x year rows with no FCIP match carry NA fcip_*).
+n_rows <- nrow(us_state_ag_census)
+us_state_ag_census <- as.data.table(dplyr::left_join(
+  us_state_ag_census, fcip_data, by = c("state_code", "census_year")))
+n_na <- sum(is.na(us_state_ag_census$fcip_base_rate))
+if (n_na > 0L)
+  message(sprintf(
+    "internal_datasets: %d of %d state x year rows have no FCIP match (fcip_* = NA).",
+    n_na, n_rows))
+
+us_state_ag_census[, fcip_adoption          := pmin(fcip_acres / cropland_acres, 1)]
+us_state_ag_census[, ag_land_value_per_acre := ag_land_value / ag_land]
+
+# Key the shipped object on the documented panel identifiers (kept through save).
 data.table::setkey(us_state_ag_census, state_code, census_year)
-
-us_state_ag_census <- as.data.table(dplyr::inner_join(us_state_ag_census, fcip_data))
-
-us_state_ag_census[, fcip_adoption := pmin(fcip_acres/cropland_acres,1)]
-us_state_ag_census[, ag_land_value_per_acre := ag_land_value/ag_land]
-us_state_ag_census
 
 # --- Persist as exported package data (data/us_state_ag_census.rda) ----------
 usethis::use_data(us_state_ag_census, overwrite = TRUE)
