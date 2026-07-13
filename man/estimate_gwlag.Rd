@@ -80,6 +80,8 @@ are used.
 }
 \seealso{
 Other Geographically weighted summaries: 
-\code{\link{estimate_gwss}()}
+\code{\link{estimate_gwss}()},
+\code{\link{estimate_gwss_kernels}()},
+\code{\link{gw_select_bandwidth}()}
 }
 \concept{Geographically weighted summaries}
