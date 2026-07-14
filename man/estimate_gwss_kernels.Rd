@@ -81,6 +81,7 @@ the per-metric building block for spec ensembles: much cheaper than calling
 \seealso{
 Other Geographically weighted summaries: 
 \code{\link{estimate_gwlag}()},
+\code{\link{estimate_gwlag_kernels}()},
 \code{\link{estimate_gwss}()},
 \code{\link{gw_select_bandwidth}()}
 }

@@ -226,3 +226,159 @@ estimate_gwr <- function(data, unit, formula, geometry = NULL,
   if (!is.null(out)) attr(out, "NFE") <- nfe
   out
 }
+
+
+# ------------------------------------------------------------
+# Internal multi-kernel core. Mirrors .estimate_gwr_core()'s mean path but fits
+# every kernel over one shared distance build via .gw_local_fit_kernels() and
+# stacks the results with a `kernel` column. Variance mode is not supported here
+# (the log-squared-residual refit is kernel-specific and would defeat the reuse).
+# ------------------------------------------------------------
+.estimate_gwr_kernels_core <- function(obs, tgt, unit, formula,
+                                       p, theta, longlat, kernels, adaptive,
+                                       bw, bandwidth, bw_approach,
+                                       fit_stats, standard_errors, terms,
+                                       model_estimator) {
+
+  ok_kernels <- c("gaussian", "exponential", "bisquare", "boxcar", "tricube")
+  bad_k <- setdiff(kernels, ok_kernels)
+  if (length(bad_k)) stop("Unknown kernel(s): ", paste(bad_k, collapse = ", "))
+
+  formula <- stats::as.formula(formula)
+  vars <- all.vars(formula)
+  obs <- data.table::as.data.table(obs)
+  tgt <- data.table::as.data.table(tgt)
+
+  fin <- Reduce(`&`, lapply(vars, function(v) is.finite(as.numeric(obs[[v]]))))
+  fin <- fin & is.finite(obs[[".gw_xo"]]) & is.finite(obs[[".gw_yo"]])
+  obs <- obs[fin]
+  if (nrow(obs) < (length(vars) + 1L)) return(NULL)
+
+  obs_df <- as.data.frame(obs)
+  mf <- stats::model.frame(formula, obs_df)
+  mm <- stats::model.matrix(attr(mf, "terms"), mf)
+  y  <- as.numeric(stats::model.response(mf))
+  obs_xy <- as.matrix(obs[, c(".gw_xo", ".gw_yo")])
+  tgt_xy <- as.matrix(tgt[, c(".gw_xt", ".gw_yt")])
+
+  fitk <- .gw_local_fit_kernels(mm = mm, y = y, obs_xy = obs_xy, tgt_xy = tgt_xy,
+                                p = p, theta = theta, longlat = longlat,
+                                kernels = kernels, adaptive = adaptive,
+                                bw = bw, bandwidth = bandwidth, bw_approach = bw_approach,
+                                standard_errors = standard_errors, fit_stats = fit_stats)
+
+  terms_all <- colnames(mm)
+  uid <- as.character(tgt[[unit]])
+
+  long_rows <- function(f, estimand, kernel) {
+    data.table::rbindlist(lapply(seq_along(terms_all), function(ti){
+      dt <- data.table::data.table(
+        unit_id  = uid,
+        term     = terms_all[ti],
+        estimand = estimand,
+        estimate = f$coef[, ti],
+        se       = if (!is.null(f$se)) f$se[, ti] else NA_real_,
+        tv = NA_real_, pv = NA_real_,
+        kernel   = kernel)
+      if (isTRUE(fit_stats)) { dt[, r_squared := f$r_squared]; dt[, n_obs := f$n_obs] }
+      dt
+    }), fill = TRUE)
+  }
+
+  out <- data.table::rbindlist(
+    lapply(kernels, function(km) long_rows(fitk$fits[[km]], "mean", km)),
+    fill = TRUE)
+
+  if (isTRUE(standard_errors)) {
+    out[, tv := estimate / se]
+    out[, pv := 2 * stats::pnorm(-abs(tv))]
+  }
+  if (!is.null(terms)) out <- out[term %in% terms]
+  out[, unit_level := unit]
+  out[, model_estimator := model_estimator]
+  data.table::setcolorder(out, c("unit_id", "term", "estimand", "unit_level",
+                                 "estimate", "se", "tv", "pv", "kernel"))
+  data.table::setattr(out, "bandwidth", fitk$bw)
+  out[]
+}
+
+
+#' Geographically weighted regression across kernels (one distance metric)
+#'
+#' Multi-kernel companion to `estimate_gwr()`: fits the same model under several
+#' kernels for a single `distance_metric`, computing the (kernel-independent)
+#' obs->target distance matrix and the bandwidth only **once** and reusing them
+#' across kernels. It is the regression analogue of `estimate_gwss_kernels()` and
+#' the per-metric building block for spec ensembles (10 metrics x 5 kernels): far
+#' cheaper than calling `estimate_gwr()` once per kernel. Point vs polygon mode,
+#' fixed-effects absorption (`panel`/`time`), `fit_stats`, opt-in
+#' `standard_errors`, and `terms` behave exactly as in `estimate_gwr()`.
+#'
+#' @inheritParams estimate_gwr
+#' @param kernel Character vector of kernels to evaluate (any of `"gaussian"`,
+#'   `"exponential"`, `"bisquare"`, `"boxcar"`, `"tricube"`). Default: all five.
+#' @param bandwidth Bandwidth strategy when `bw` is `NULL`: `"shared"` (default)
+#'   selects one bandwidth (on the first kernel) and reuses it for all kernels -
+#'   one `GWmodel::bw.gwr()` call instead of `length(kernel)`; `"per_kernel"`
+#'   selects a bandwidth per kernel (matches looping `estimate_gwr()` exactly).
+#' @param bw Optional pre-computed bandwidth override. Either a single numeric
+#'   (used for every kernel) or a **named** numeric keyed by kernel (per-kernel
+#'   reuse across calls, e.g. across a grid of models). When supplied no
+#'   bandwidth selection is performed. Because the bandwidth is chosen on the
+#'   (FE-demeaned) response intercept-only, it is invariant to the covariates, so
+#'   the selected value returned in `attr(., "bandwidth")` can be fed back as
+#'   `bw` for subsequent fits that differ only in their covariates.
+#'
+#' @return A `data.table` stacked over `kernel` (a `kernel` column added to the
+#'   `estimate_gwr()` long layout: one row per `unit_id` x `term` x `estimand` x
+#'   `kernel`). The per-kernel bandwidths are attached as a named numeric in
+#'   `attr(., "bandwidth")`; number of panels absorbed (FE mode) in
+#'   `attr(., "NFE")`. `estimand` is always `"mean"` (variance mode unsupported).
+#' @family Geographically weighted regression
+#' @seealso `estimate_gwr()`, `estimate_gwss_kernels()`
+#' @export
+estimate_gwr_kernels <- function(data, unit, formula, geometry = NULL,
+                                 coords = c("longitude", "latitude"), poly_id = unit,
+                                 predict = NULL, panel = NULL, time = NULL,
+                                 distance_metric = "Euclidean",
+                                 kernel = c("gaussian", "exponential", "bisquare",
+                                            "boxcar", "tricube"),
+                                 adaptive = TRUE, bw = NULL,
+                                 bandwidth = c("shared", "per_kernel"),
+                                 bw_approach = "CV", fit_stats = FALSE,
+                                 standard_errors = FALSE, terms = NULL) {
+  bandwidth <- match.arg(bandwidth)
+  dm <- resolve_distance_metric(distance_metric)
+  formula <- stats::as.formula(formula)
+  nfe <- NA_integer_
+  is_poly <- inherits(geometry, c("sf", "SpatVector")) ||
+             inherits(data, c("sf", "SpatVector"))
+
+  if (!is.null(panel)) {
+    dem <- .gwfe_demean(data, formula, panel, time)
+    d   <- dem$data; d[[unit]] <- as.character(d[[unit]])
+    formula <- stats::reformulate(dem$covs, response = dem$dm_response)
+    model_est <- "gwfe"; nfe <- dem$NFE
+    if (!is_poly) {
+      src  <- data.table::as.data.table(data); src[[unit]] <- as.character(src[[unit]])
+      cmap <- unique(src[, c(unit, coords), with = FALSE], by = unit)
+      d <- merge(d, cmap, by = unit, all.x = TRUE)
+    }
+    data_for_geo <- d
+  } else {
+    model_est <- "gwr"; data_for_geo <- data
+  }
+
+  geo <- .resolve_gw_geometry(data_for_geo, unit = unit, coords = coords,
+                              geometry = geometry, poly_id = poly_id,
+                              longlat = dm$longlat, predict = predict)
+
+  out <- .estimate_gwr_kernels_core(geo$obs, geo$tgt, unit = unit, formula = formula,
+                                    p = dm$p, theta = dm$theta, longlat = dm$longlat,
+                                    kernels = kernel, adaptive = adaptive,
+                                    bw = bw, bandwidth = bandwidth, bw_approach = bw_approach,
+                                    fit_stats = fit_stats, standard_errors = standard_errors,
+                                    terms = terms, model_estimator = model_est)
+  if (!is.null(out)) attr(out, "NFE") <- nfe
+  out
+}

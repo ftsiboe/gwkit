@@ -97,4 +97,8 @@ vs polygon mode is detected by class: pass an \code{sf}/\code{terra} \code{SpatV
 \code{data}, or via \code{geometry} for panel inputs) for polygon units - each reduced
 to its point-on-surface; otherwise the \code{coords} columns of \code{data} are used.
 }
+\seealso{
+Other Geographically weighted regression: 
+\code{\link{estimate_gwr_kernels}()}
+}
 \concept{Geographically weighted regression}

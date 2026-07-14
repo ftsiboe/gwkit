@@ -84,6 +84,7 @@ correlation between variables). Point vs polygon mode is detected by class.
 \seealso{
 Other Geographically weighted summaries: 
 \code{\link{estimate_gwlag}()},
+\code{\link{estimate_gwlag_kernels}()},
 \code{\link{estimate_gwss_kernels}()},
 \code{\link{gw_select_bandwidth}()}
 }
