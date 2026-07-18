@@ -51,8 +51,15 @@
   }
 
   # source x target distance and weights
-  D <- GWmodel::gw.dist(dp.locat = obs_xy, rp.locat = tgt_xy,
-                        focus = 0, p = p, theta = theta, longlat = longlat)
+  #
+  # .gw_dist_oriented(), NOT gw.dist() directly: GWmodel returns dp x rp on the
+  # Minkowski path but rp x dp when longlat = TRUE. The bare call here had the
+  # same defect the GWR engine did - gw.weight() applies an adaptive bandwidth
+  # column-wise, so a transposed matrix took the neighbourhood along the wrong
+  # axis, and the matrix() reshape below then scrambled the source-to-target
+  # mapping. Every Great Circle result from this function was invalid; other
+  # metrics were unaffected. See .gw_dist_oriented() in gw_local_engine.R.
+  D <- .gw_dist_oriented(obs_xy, tgt_xy, p, theta, longlat)
   W <- GWmodel::gw.weight(vdist = D, bw = bw, kernel = kernel, adaptive = adaptive)
   W <- matrix(W, nrow = nrow(obs_xy), ncol = nrow(tgt_xy))   # obs x target
 
@@ -188,8 +195,10 @@ estimate_gwlag <- function(data, unit, value_cols, geometry = NULL,
   }
 
   # --- obs -> target distances built ONCE, reused across kernels ---
-  D <- GWmodel::gw.dist(dp.locat = obs_xy, rp.locat = tgt_xy,
-                        focus = 0, p = p, theta = theta, longlat = longlat)
+  # Orientation-normalised: GWmodel::gw.dist() returns rp x dp under
+  # longlat = TRUE (see .gw_dist_oriented in gw_local_engine.R), which silently
+  # corrupted every Great Circle result.
+  D <- .gw_dist_oriented(obs_xy, tgt_xy, p, theta, longlat)
   same <- if (!isTRUE(include_self)) outer(obs[[unit]], tgt[[unit]], FUN = "==") else NULL
 
   parts <- lapply(kernels, function(km) {
