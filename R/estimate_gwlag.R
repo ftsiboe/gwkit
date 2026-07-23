@@ -69,14 +69,20 @@
     W[same] <- 0
   }
 
-  denom <- colSums(W, na.rm = TRUE)
+  # All value columns in ONE BLAS pass. crossprod(W, V)[t, c] = sum_o W[o,t]*V[o,c],
+  # i.e. exactly the per-column colSums(W * z) this replaces, but O(n^2 * ncol) in
+  # BLAS rather than an R loop - the difference that makes many-column lags viable.
+  W[!is.finite(W)] <- 0
+  denom <- colSums(W)
+  V <- as.matrix(as.data.frame(obs)[, value_cols, drop = FALSE])
+  storage.mode(V) <- "double"; V[!is.finite(V)] <- 0
+  num  <- crossprod(W, V)                                  # target x value_col
+  bad  <- !is.finite(denom) | denom == 0
   out <- data.table::data.table(uid = tgt[[unit]])
-  for (vc in value_cols) {
-    z <- as.numeric(obs[[vc]]); z[!is.finite(z)] <- 0
-    num <- colSums(W * z, na.rm = TRUE)
-    lag <- num / denom
-    lag[!is.finite(denom) | denom == 0] <- NA_real_
-    out[[paste0(vc, "_LM")]] <- lag
+  for (i in seq_along(value_cols)) {
+    lag <- num[, i] / denom
+    lag[bad] <- NA_real_
+    out[[paste0(value_cols[i], "_LM")]] <- lag
   }
   data.table::setnames(out, "uid", unit)
   attr(out, "bandwidth") <- bw
@@ -201,17 +207,22 @@ estimate_gwlag <- function(data, unit, value_cols, geometry = NULL,
   D <- .gw_dist_oriented(obs_xy, tgt_xy, p, theta, longlat)
   same <- if (!isTRUE(include_self)) outer(obs[[unit]], tgt[[unit]], FUN = "==") else NULL
 
+  Vmat <- as.matrix(as.data.frame(obs)[, value_cols, drop = FALSE])
+  storage.mode(Vmat) <- "double"; Vmat[!is.finite(Vmat)] <- 0
+
   parts <- lapply(kernels, function(km) {
     W <- GWmodel::gw.weight(vdist = D, bw = bw_named[[km]], kernel = km, adaptive = adaptive)
     W <- matrix(W, nrow = nrow(obs_xy), ncol = nrow(tgt_xy))
     if (!is.null(same)) W[same] <- 0
-    denom <- colSums(W, na.rm = TRUE)
+    W[!is.finite(W)] <- 0
+    denom <- colSums(W)
+    num   <- crossprod(W, Vmat)                            # one BLAS pass, all columns
+    bad   <- !is.finite(denom) | denom == 0
     o <- data.table::data.table(uid = tgt[[unit]])
-    for (vc in value_cols) {
-      z <- as.numeric(obs[[vc]]); z[!is.finite(z)] <- 0
-      lag <- colSums(W * z, na.rm = TRUE) / denom
-      lag[!is.finite(denom) | denom == 0] <- NA_real_
-      o[[paste0(vc, "_LM")]] <- lag
+    for (i in seq_along(value_cols)) {
+      lag <- num[, i] / denom
+      lag[bad] <- NA_real_
+      o[[paste0(value_cols[i], "_LM")]] <- lag
     }
     data.table::setnames(o, "uid", unit)
     o[, "kernel" := km]
