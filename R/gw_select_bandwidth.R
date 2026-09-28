@@ -23,8 +23,8 @@ gw_select_bandwidth <- function(data, variable_list, coords = c("longitude", "la
   ok_kernels <- c("gaussian", "exponential", "bisquare", "boxcar", "tricube")
   if (length(kernel) != 1L || !kernel %in% ok_kernels)
     stop("`kernel` must be a single one of: ", paste(ok_kernels, collapse = ", "))
-  if (!approach %in% c("CV", "AIC", "AICc"))
-    stop("`approach` must be one of: CV, AIC, AICc")
+  if (!approach %in% c("CV", "AIC", "AICc", "BIC"))
+    stop("`approach` must be one of: CV, AIC, AICc, BIC")
   if (missing(data) || is.null(data)) stop("Argument `data` must be supplied.")
 
   dm <- resolve_distance_metric(distance_metric)

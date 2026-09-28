@@ -168,8 +168,11 @@ utils::globalVariables(c("value", "longitude", "latitude",
 #'   `"Euclidean"`.
 #' @param kernel GW kernel. Default `"gaussian"`.
 #' @param adaptive Logical; adaptive (kNN) bandwidth if `TRUE`. Default `TRUE`.
-#' @param approach Bandwidth criterion, one of `"CV"`, `"AIC"`, `"AICc"`.
-#'   Default `"CV"`.
+#' @param approach Bandwidth criterion, one of `"CV"`, `"AIC"`, `"AICc"`, `"BIC"`
+#'   (passed to `GWmodel::bw.gwr()`). Default `"CV"`. Leave-one-out CV can keep
+#'   improving down to the smallest bandwidth when observations sit side by side;
+#'   BIC penalises the effective number of parameters and can find an interior
+#'   optimum where CV and AICc do not.
 #' @param target_crs Integer EPSG code (meters) for projection (polygon geometry
 #'   and the point-mode radius screen). Default `5070` (NAD83 / CONUS Albers).
 #' @param draw_rate Fraction of observed units used for bandwidth selection.
@@ -195,8 +198,8 @@ estimate_gwss <- function(data, variable_list, geometry = NULL, us_counties = FA
 
   if (!kernel %in% c("gaussian", "exponential", "bisquare", "boxcar", "tricube"))
     stop("`kernel` must be one of: gaussian, exponential, bisquare, boxcar, tricube")
-  if (!approach %in% c("CV", "AIC", "AICc"))
-    stop("`approach` must be one of: CV, AIC, AICc")
+  if (!approach %in% c("CV", "AIC", "AICc", "BIC"))
+    stop("`approach` must be one of: CV, AIC, AICc, BIC")
   if (missing(data) || is.null(data)) stop("Argument `data` must be supplied.")
 
   dm <- resolve_distance_metric(distance_metric)
@@ -287,13 +290,18 @@ estimate_gwss <- function(data, variable_list, geometry = NULL, us_counties = FA
 #'   (default) selects one bandwidth (from the first kernel) and reuses it for all
 #'   kernels - one `bw.gwr()` call instead of `length(kernel)`; `"per_kernel"`
 #'   selects a bandwidth per kernel (matches looping `estimate_gwss()` exactly).
-#' @param bw Optional numeric bandwidth override. When supplied it is used for
-#'   every kernel and no bandwidth selection is performed (overrides `bandwidth`).
+#' @param bw Optional bandwidth override; no bandwidth selection is performed
+#'   (overrides `bandwidth`). Either one number, used for every kernel, or a
+#'   vector named by kernel with one bandwidth per kernel (e.g.
+#'   `c(gaussian = 0.6, bisquare = 1.4)`), which must cover every kernel in
+#'   `kernel`. Per-kernel values matter because a kernel's bandwidth means
+#'   different things (a spread for `gaussian`, a cut-off radius for `bisquare`).
 #'
 #' @return A `data.table` stacked over `kernel` (one block of prediction rows per
 #'   kernel), with the GWSS statistics, coordinates, `identifiers`, and a `kernel`
 #'   column. `distance_params` is attached as an attribute; when a single shared
-#'   bandwidth is used it is attached as `bandwidth`.
+#'   bandwidth is used it is attached as `bandwidth`, and per-kernel bandwidths
+#'   (`bw` named by kernel) are attached as a named vector.
 #' @family Geographically weighted summaries
 #' @export
 estimate_gwss_kernels <- function(
@@ -309,9 +317,23 @@ estimate_gwss_kernels <- function(
   ok_kernels <- c("gaussian", "exponential", "bisquare", "boxcar", "tricube")
   bad_k <- setdiff(kernel, ok_kernels)
   if (length(bad_k)) stop("Unknown kernel(s): ", paste(bad_k, collapse = ", "))
-  if (!approach %in% c("CV", "AIC", "AICc"))
-    stop("`approach` must be one of: CV, AIC, AICc")
+  if (!approach %in% c("CV", "AIC", "AICc", "BIC"))
+    stop("`approach` must be one of: CV, AIC, AICc, BIC")
   if (missing(data) || is.null(data)) stop("Argument `data` must be supplied.")
+
+  # `bw`: one value for every kernel, or one per kernel (a vector named by kernel)
+  bw_per_kernel <- NULL
+  if (!is.null(bw)) {
+    if (!is.numeric(bw) || any(!is.finite(bw)) || any(bw <= 0))
+      stop("`bw` must be positive, finite number(s).")
+    if (length(bw) > 1L || !is.null(names(bw))) {
+      if (is.null(names(bw)) || !all(kernel %in% names(bw)))
+        stop("A `bw` with more than one value must be named by kernel and cover: ",
+             paste(kernel, collapse = ", "))
+      bw_per_kernel <- bw[kernel]
+      bw <- NULL
+    }
+  }
 
   dm <- resolve_distance_metric(distance_metric)
   p <- dm$p; theta <- dm$theta; longlat <- dm$longlat
@@ -335,7 +357,7 @@ estimate_gwss_kernels <- function(
   # Bandwidth reuse: an explicit `bw` overrides everything; otherwise "shared"
   # selects it once (first kernel) and reuses it across all kernels.
   shared_bw <- bw
-  if (is.null(shared_bw) && bandwidth == "shared")
+  if (is.null(shared_bw) && is.null(bw_per_kernel) && bandwidth == "shared")
     shared_bw <- GWmodel::bw.gwr(value ~ 1, data = setup$obs_sp[prep$sub_ids, ],
                                  approach = approach, adaptive = adaptive,
                                  kernel = kernel[[1]], p = p, theta = theta,
@@ -343,7 +365,8 @@ estimate_gwss_kernels <- function(
 
   parts <- lapply(kernel, function(km) {
     r <- .gwss_run(setup$obs_sp, setup$pred_sp, variable_list, prep,
-                   km, adaptive, approach, p, theta, longlat, bw = shared_bw)
+                   km, adaptive, approach, p, theta, longlat,
+                   bw = if (!is.null(bw_per_kernel)) bw_per_kernel[[km]] else shared_bw)
     if (is.null(r)) return(NULL)
     d <- .gwss_point_attach(r$df, setup$pred_sp, identifiers)
     d[, kernel := km]
@@ -354,7 +377,8 @@ estimate_gwss_kernels <- function(
                                use.names = TRUE, fill = TRUE)
   if (!nrow(out)) return(data.table::data.table())
   data.table::setattr(out, "distance_params", list(p = p, theta = theta, longlat = longlat))
-  if (!is.null(shared_bw)) data.table::setattr(out, "bandwidth", shared_bw)
+  if (!is.null(shared_bw))     data.table::setattr(out, "bandwidth", shared_bw)
+  if (!is.null(bw_per_kernel)) data.table::setattr(out, "bandwidth", bw_per_kernel)
   out[]
 }
 

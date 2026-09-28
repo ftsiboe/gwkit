@@ -39,8 +39,11 @@ the \code{coords} columns (and any \code{identifiers}). Defaults to the observed
 
 \item{adaptive}{Logical; adaptive (kNN) bandwidth if \code{TRUE}. Default \code{TRUE}.}
 
-\item{approach}{Bandwidth criterion, one of \code{"CV"}, \code{"AIC"}, \code{"AICc"}.
-Default \code{"CV"}.}
+\item{approach}{Bandwidth criterion, one of \code{"CV"}, \code{"AIC"}, \code{"AICc"}, \code{"BIC"}
+(passed to \code{GWmodel::bw.gwr()}). Default \code{"CV"}. Leave-one-out CV can keep
+improving down to the smallest bandwidth when observations sit side by side;
+BIC penalises the effective number of parameters and can find an interior
+optimum where CV and AICc do not.}
 
 \item{target_crs}{Integer EPSG code (meters) for projection (polygon geometry
 and the point-mode radius screen). Default \code{5070} (NAD83 / CONUS Albers).}

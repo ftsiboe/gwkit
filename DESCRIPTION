@@ -1,7 +1,7 @@
 Package: gwkit
 Type: Package
 Title: Convenience Wrappers and Workflows for Geographically Weighted Analysis
-Version: 0.0.0.9000
+Version: 0.0.0.9001
 Author: Francis Tsiboe [aut, cre] (<https://orcid.org/0000-0001-5984-1072>),
     TERRA ANALYTICS LLC [cph, fnd]
 Maintainer: Francis Tsiboe <ftsiboe@hotmail.com>

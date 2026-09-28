@@ -61,3 +61,42 @@ test_that("estimate_gwss_kernels (shared) reuses one bandwidth across kernels", 
   expect_false(is.null(attr(res, "bandwidth")))
   expect_length(attr(res, "bandwidth"), 1L)
 })
+
+test_that("estimate_gwss_kernels uses one bandwidth per kernel when bw is named by kernel", {
+  skip_if_not_installed("GWmodel")
+  skip_if_not_installed("sf")
+  skip_if_not_installed("sp")
+
+  df   <- .londonhp_points()
+  args <- list(data = df, variable_list = "value", coords = c("lon", "lat"),
+               distance_metric = "Great Circle", adaptive = FALSE,
+               target_crs = 27700, feasible_radius = 500)
+  bws  <- c(gaussian = 2, bisquare = 5)            # km (great circle, fixed)
+
+  batch <- do.call(estimate_gwss_kernels, c(args, list(kernel = names(bws), bw = bws)))
+  expect_s3_class(batch, "data.table")
+  skip_if(nrow(batch) == 0, "GWSS produced no rows in this environment.")
+  expect_equal(attr(batch, "bandwidth"), bws)       # per-kernel bandwidths attached, by name
+
+  # Each kernel's surface equals a one-kernel call with that kernel's scalar bandwidth
+  for (k in names(bws)) {
+    one <- do.call(estimate_gwss_kernels, c(args, list(kernel = k, bw = unname(bws[k]))))
+    b <- data.table::copy(batch[kernel == k])
+    data.table::setorder(b, longitude, latitude)
+    data.table::setorder(one, longitude, latitude)
+    expect_equal(b$value_LM, one$value_LM, tolerance = 1e-9)
+  }
+})
+
+test_that("BIC bandwidth selection runs and returns a bandwidth", {
+  skip_if_not_installed("GWmodel")
+  skip_if_not_installed("sf")
+  skip_if_not_installed("sp")
+
+  df <- .londonhp_points()
+  bw <- gw_select_bandwidth(df, "value", coords = c("lon", "lat"),
+                            distance_metric = "Great Circle", kernel = "bisquare",
+                            adaptive = FALSE, approach = "BIC",
+                            target_crs = 27700, feasible_radius = 500)
+  expect_true(is.numeric(bw) && length(bw) == 1L && is.finite(bw) && bw > 0)
+})
